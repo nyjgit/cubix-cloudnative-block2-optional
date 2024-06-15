@@ -1,0 +1,20 @@
+services:
+  backapp:
+    image: quay.io/drsylent/cubix/block2/optional-backend:springboot3
+    volumes:
+    - type: bind
+      source: ./config/application.properties
+      target: /var/opt/appconfig/application.properties
+    # alternatively (instead of bind mount):
+#   environment:
+#     DATA_SOURCE_FINDMEOUT: cubix
+
+  frontapp:
+    image: frontend-with-build:1
+    ports:
+    - 8080:8080
+    environment:
+      JAVA_OPTS: -Dfrontend.default.message=env
+      JAR_ARGS: --spring.main.banner-mode=off
+      BACKEND_URL: http://backapp:8080
+

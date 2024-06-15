@@ -1,0 +1,17 @@
+FROM quay.io/drsylent/cubix/block2/optional-base:ubuntu22
+
+EXPOSE 8080
+
+USER 0
+RUN apt update && apt -y install openjdk-21-jre-headless && rm -rf /var/lib/apt/lists/* && mkdir /var/opt/appconfig /var/opt/app && chown 1001 /var/opt/appconfig /var/opt/app
+USER 1001
+
+WORKDIR /var/opt/app
+COPY --chown=1001 frontend/target/*.jar app.jar
+
+ARG IMAGE_BUILDER
+LABEL image.builder=$IMAGE_BUILDER
+
+ENTRYPOINT ["/bin/sh", "-c", "exec java $JAVA_OPTS -jar app.jar $JAR_ARGS"]
+# /bin/sh -c ...    --> for ignoring further CMD or "docker run" command line arguments
+# exec ...          --> so that the java process replaces the shell (becoming PID 1) and therefore it will receive signals from Docker

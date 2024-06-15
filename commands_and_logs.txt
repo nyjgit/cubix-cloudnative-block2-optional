@@ -1,0 +1,111 @@
+# commands are run in the cubix-cloudnative-block2-optional directory
+
+
+# BACKEND
+
+docker pull quay.io/drsylent/cubix/block2/optional-backend:springboot3
+
+
+# searching for configuration:
+
+docker history --no-trunc quay.io/drsylent/cubix/block2/optional-backend:springboot3 > backend_info.txt
+    # ...
+    # RUN /bin/sh -c echo data.source.findmeout=webuni > /var/opt/appconfig/application.properties # buildkit
+    # ...
+
+
+# Alternatively:
+
+docker inspect quay.io/drsylent/cubix/block2/optional-backend:springboot3 > backend_info2.txt
+            # ...
+            # "Env": [
+            #     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            #     "SPRING_CONFIG_LOCATION=file:///var/opt/appconfig/application.properties"
+            # ],
+            # ...
+
+
+# or, assuming "application.properties":
+
+docker run --rm --entrypoint sh -it quay.io/drsylent/cubix/block2/optional-backend:springboot3
+    # $ find . -name 'application.properties'
+        # ...
+        # ./var/opt/appconfig/application.properties
+        # ...
+    # $ cat var/opt/appconfig/application.properties
+        # data.source.findmeout=webuni
+    # $ exit
+
+
+# modifying the configuration:
+
+mkdir config
+echo data.source.findmeout=cubix > config\application.properties
+docker run --name modified --mount type=bind,source=$(pwd)/config/application.properties,target=/var/opt/appconfig/application.properties -d -p 8081:8080 quay.io/drsylent/cubix/block2/optional-backend:springboot3
+    # testing with Postman on http://localhost:8081/backend --> ... "source": "cubix" ...
+
+# or:
+docker run --name modified -e DATA_SOURCE_FINDMEOUT=cubix -d -p 8081:8080 quay.io/drsylent/cubix/block2/optional-backend:springboot3
+    # testing with Postman on http://localhost:8081/backend --> ... "source": "cubix" ...
+
+
+
+
+# FRONTEND
+
+cd frontend && .\mvnw clean verify && cd ..
+
+# creating Dockerfile_without_Maven_build
+
+docker build -t frontend-without-build:1 -f Dockerfile_without_Maven_build --build-arg IMAGE_BUILDER="János Nyőgér" .
+    # image size: 378.49 MB ✓
+docker run --name frontend1 -p 8080:8080 -d -e JAVA_OPTS=-Dfrontend.default.message=env -e JAR_ARGS=--spring.main.banner-mode=off frontend-without-build:1
+    # testing with Postman on http://localhost:8080/frontend/local --> ... "frontendMessage": "env" ...
+
+docker exec -it frontend1 /bin/bash
+    # $ ps aux
+            # USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+            # 1001         1  9.0  5.1 5518120 201776 ?      Ssl  20:38   0:14 java -Dfrontend.default.message=env -jar app.jar --spring.main.banner-mode=off
+            # 1001        54  0.0  0.0   4496  3840 pts/0    Ss   20:39   0:00 /bin/bash
+            # 1001        66  0.0  0.0   7064  1552 pts/0    R+   20:41   0:00 ps aux
+    # $ exit
+echo $(date) && docker stop frontend1 && echo $(date)
+    # stopped within 1 second
+
+# temporarily removing "exec" from the ENTRYPOINT instruction of the Dockerfile, for testing:
+# building and running as previously...
+docker exec -it frontend1_2 /bin/bash
+    # $ ps aux
+            # USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+            # 1001         1  0.1  0.0   2892   956 ?        Ss   20:54   0:00 /bin/sh -c java $JAVA_OPTS -jar app.jar $JAR_ARGS
+            # 1001         7  171  5.0 5518120 195372 ?      Sl   20:54   0:13 java -Dfrontend.default.message=env -jar app.jar --spring.main.banner-mode=off
+            # 1001        55  1.0  0.0   4496  3800 pts/0    Ss   20:54   0:00 /bin/bash
+            # 1001        62  0.0  0.0   7064  1580 pts/0    R+   20:54   0:00 ps aux
+    # $ exit
+echo $(date) && docker stop frontend1_2 && echo $(date)
+    # stopped in ~12 seconds
+
+cd frontend && .\mvnw clean && cd ..
+
+
+# creating Dockerfile_with_Maven_build
+
+# checking line endings in frontend/mvnw -> LF ✓
+docker build -t frontend-with-build:1 -f Dockerfile_with_Maven_build --build-arg IMAGE_BUILDER="János Nyőgér" frontend
+    # image size: 378.49 MB ✓
+    # after changing the version number in the pom.xml file, "RUN ./mvnw clean verify" is ~33 seconds without cache mount, ~16 seconds with cache mount
+docker run --name frontend2 -p 8080:8080 -d -e JAVA_OPTS=-Dfrontend.default.message=env -e JAR_ARGS=--spring.main.banner-mode=off frontend-with-build:1
+    # testing with Postman on http://localhost:8080/frontend/local --> ... "frontendMessage": "env" ...
+
+echo $(date) && docker stop frontend2 && echo $(date)
+    # stopped in less than 1 second
+
+
+
+# creating docker-compose.yaml
+
+docker compose up -d
+    # sending a request from Postman (http://localhost:8080/frontend)
+        # response: {"msForReply":182,"frontendMessage":"env","backendSourceData":"cubix"}
+
+docker compose down
